@@ -47,6 +47,13 @@ int lastMousePos = -1;
 bool rolloverPos = false;
 bool rolloverNeg = false;
 
+struct ArcInfo {
+	float startAngle;
+	float arcLength;
+	System::Drawing::Rectangle rect;
+	float noteScale;
+};
+
 
 int findLine(std::list<NotesNode>::iterator nextNode) {
 	int outputLine = 0;
@@ -1912,6 +1919,8 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 				tempnode.noteType = NotesITR->noteType;
 				tempnode.position = NotesITR->position;
 				tempnode.size = NotesITR->size;
+				tempnode.nextNode = NotesITR->nextNode;
+				tempnode.prevNode = NotesITR->prevNode;
 				mapOfNotes[currentTime].push_back(tempnode);
 			}
 		}
@@ -2681,26 +2690,25 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 				viewNotesITR--;
 				switch (viewNotesITR->noteType) {
 				case HoldStartNoBonus:
+				case HoldStartBonusFlair:
 					viewNotesITR->prevNode = theChart.Notes.end();
 					viewNotesITR->nextNode = theChart.Notes.end();
 					holdNoteitr = viewNotesITR;
+					refreshMapofNotes();
 					break;
 				case HoldMiddle:
 					viewNotesITR->prevNode = holdNoteitr;
 					viewNotesITR->prevNode->nextNode = viewNotesITR;
 					viewNotesITR->nextNode = theChart.Notes.end();
 					holdNoteitr = viewNotesITR;
+					refreshMapofNotes();
 					break;
 				case HoldEnd:
 					viewNotesITR->prevNode = holdNoteitr;
 					viewNotesITR->prevNode->nextNode = viewNotesITR;
 					viewNotesITR->nextNode = theChart.Notes.end();
 					holdNoteitr = theChart.Notes.end();
-					break;
-				case HoldStartBonusFlair:
-					viewNotesITR->prevNode = theChart.Notes.end();
-					viewNotesITR->nextNode = theChart.Notes.end();
-					holdNoteitr = viewNotesITR;
+					refreshMapofNotes();
 					break;
 				}
 			}
@@ -3315,203 +3323,6 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 		}
 	}
 	private: System::Void MyForm_Paint(System::Object^ sender, System::Windows::Forms::PaintEventArgs^ e) {
-		/* MOVED TO PANEL PAINT
-		//Note graphics
-		Graphics^ notesGraphics = e->Graphics;
-		//Circle location and size
-		int xPos = InitialSettingsPane->Left;
-		int yPos = InitialSettingsPane->Bottom + 6;
-		int sizeOfRect = InitialSettingsPane->Width;
-		Point noteViewPos = NotesViewBox->Location;
-		Point InitSetBoxPos = InitialSettingsPane->Location;
-		if (noteViewPos.Y < (sizeOfRect + InitSetBoxPos.Y + InitialSettingsPane->Height)) {
-			sizeOfRect = noteViewPos.Y - InitialSettingsPane->Height - InitSetBoxPos.Y - 6;
-		}
-		//Circle info
-		float circleRadius = (sizeOfRect / 2);
-		float xCenterOfCircle = circleRadius + xPos;
-		float yCenterOfCircle = circleRadius + yPos;
-		//Selected object values
-		float startAngle = -((float)PosNum->Value * 6);
-		float arcLength = -((float)SizeNum->Value * 6);
-		//Rectangle the visualization is in
-		System::Drawing::Point location(xPos, yPos);
-		System::Drawing::Size size(sizeOfRect, sizeOfRect);
-		System::Drawing::Rectangle Rect(location, size);
-		//Pens for drawing parts of circle
-		float widthOfNotePen = 5;
-		Pen^ CircleBasePen = gcnew Pen(Color::Black, 3);
-		Pen^ CircleLinesPen = gcnew Pen(Color::Black, 2);
-		Pen^ CircleNotePen = gcnew Pen(Color::Transparent, widthOfNotePen);
-		//Drawing mode
-		notesGraphics->SmoothingMode = Drawing2D::SmoothingMode::Default;
-
-		//pre-existing mask values
-		float maskStartAngle;
-		float maskArcLength;
-		//Draw pre-existing mask
-		float currentTime = (float)MeasureNum->Value + ((float)BeatNum1->Value / (float)BeatNum2->Value);
-		std::map<float, std::list<std::pair<int, int>>>::iterator mapitr = mapOfMasks.lower_bound(currentTime);
-		if (mapOfMasks.find(currentTime) == mapOfMasks.end() && Rect.Width >= 1) {
-			if (mapitr != mapOfMasks.end()) {
-				if (mapitr != mapOfMasks.begin()) {
-					mapitr--;
-				}
-				if (mapitr->first < currentTime) {
-					for (std::list<std::pair<int, int>>::iterator listITR = mapitr->second.begin(); listITR != mapitr->second.end(); listITR++) {
-						maskStartAngle = -((float)listITR->first * 6);
-						maskArcLength = -(((float)listITR->second - (float)listITR->first) * 6);
-						notesGraphics->FillPie(Brushes::Silver, Rect, maskStartAngle, maskArcLength);
-					}
-				}
-			}
-			else {
-				mapitr = mapOfMasks.end();
-				if (!mapOfMasks.empty()) {
-					mapitr--;
-					for (std::list<std::pair<int, int>>::iterator listITR = mapitr->second.begin(); listITR != mapitr->second.end(); listITR++) {
-						maskStartAngle = -((float)listITR->first * 6);
-						maskArcLength = -(((float)listITR->second - (float)listITR->first) * 6);
-						notesGraphics->FillPie(Brushes::Silver, Rect, maskStartAngle, maskArcLength);
-					}
-				}
-			}
-		}
-		else {
-			if (Rect.Width >= 1) {
-				for (std::list<std::pair<int, int>>::iterator listITR = mapitr->second.begin(); listITR != mapitr->second.end(); listITR++) {
-					maskStartAngle = -((float)listITR->first * 6);
-					maskArcLength = -(((float)listITR->second - (float)listITR->first) * 6);
-					notesGraphics->FillPie(Brushes::Silver, Rect, maskStartAngle, maskArcLength);
-				}
-			}
-		}
-
-		//Draw selected mask
-		if (SelectedLineType == 1 && Rect.Width >= 1) {
-			if (SelectedNoteTypeVisual == 12) {
-				notesGraphics->FillPie(Brushes::Silver, Rect, startAngle, arcLength);
-			}
-			if (SelectedNoteTypeVisual == 13) {
-				notesGraphics->FillPie(Brushes::White, Rect, startAngle, arcLength);
-			}
-		}
-
-		if (!alreadyDrawn) {
-			Graphics^ circleGraphics = e->Graphics;
-
-			//Draw base circle
-			circleGraphics->DrawEllipse(CircleBasePen, Rect);
-
-			//Draw Degree Lines
-			for (int i = 0; i < 360; i += 6) { //i is the angle n degrees
-				float xStart, yStart, xEnd, yEnd;
-				float degToRad = (float)i * PI / 180.0; //i to Radians
-				xStart = (circleRadius * cos(degToRad)) + xCenterOfCircle;
-				yStart = (circleRadius * sin(degToRad)) + yCenterOfCircle;
-				PointF coordPointStart(xStart, yStart);
-
-				float innerRadius = circleRadius - 10;
-				CircleLinesPen->Width = 1;
-				if (i % 90 == 0) {
-					innerRadius = circleRadius - 35.0;
-					CircleLinesPen->Width = 4;
-				}
-				else if (i % 30 == 0) {
-					innerRadius = circleRadius - 25.0;
-					CircleLinesPen->Width = 2;
-				}
-				xEnd = (innerRadius * cos(degToRad)) + xCenterOfCircle;
-				yEnd = (innerRadius * sin(degToRad)) + yCenterOfCircle;
-				PointF coordPointEnd(xEnd, yEnd);
-
-				circleGraphics->DrawLine(CircleLinesPen, coordPointStart, coordPointEnd);
-			}
-			alreadyDrawn = true;
-		}
-
-		//future stuff
-		float futStartAngle;
-		float futArcLength;
-		float xPosFut;
-		float yPosFut;
-		float sizeOfRectFut;
-		float circleRadiusFut;
-		float totalTimeShowNotes = 0.5;
-		//Draw future holds
-		for (std::map<float, std::list<NotesNode>>::iterator notemapitr = mapOfNotes.lower_bound(currentTime); notemapitr != mapOfNotes.end(); notemapitr++) {
-			float timeAtITR = notemapitr->first;
-			if (timeAtITR <= (currentTime + totalTimeShowNotes)) {
-				for (std::list<NotesNode>::iterator listofNotesitr = notemapitr->second.begin(); listofNotesitr != notemapitr->second.end(); listofNotesitr++) {
-					if (isHold(listofNotesitr->noteType)) {
-						//Future hold values
-						futStartAngle = -((float)listofNotesitr->position * 6);
-						futArcLength = -((float)listofNotesitr->size * 6);
-						CircleNotePen->Color = returnColor(listofNotesitr->noteType);
-						//modify rectangle to scale with how long until the note appears
-						float NoteScale = 1 - ((timeAtITR - currentTime) * (1 / totalTimeShowNotes)); //0-1 = 0-100%
-						sizeOfRectFut = sizeOfRect * NoteScale;
-						circleRadiusFut = (sizeOfRectFut / 2);
-						xPosFut = InitialSettingsPane->Left + (circleRadius - circleRadiusFut) + 1;
-						yPosFut = InitialSettingsPane->Bottom + 6 + (circleRadius - circleRadiusFut) + 1;
-						CircleNotePen->Width = widthOfNotePen * NoteScale + 2;
-
-						System::Drawing::Point locationFut(xPosFut, yPosFut);
-						System::Drawing::Size sizeFut(sizeOfRectFut, sizeOfRectFut);
-						System::Drawing::Rectangle RectFut(locationFut, sizeFut);
-						if (RectFut.Width >= 1) {
-							notesGraphics->DrawArc(CircleNotePen, RectFut, futStartAngle, futArcLength);
-						}
-					}
-				}
-			}
-			else {
-				notemapitr = mapOfNotes.end();
-				notemapitr--;
-			}
-		}
-
-		//Draw future notes
-		for (std::map<float, std::list<NotesNode>>::iterator notemapitr = mapOfNotes.lower_bound(currentTime); notemapitr != mapOfNotes.end(); notemapitr++) {
-			float timeAtITR = notemapitr->first;
-			if (timeAtITR <= (currentTime + totalTimeShowNotes)) {
-				for (std::list<NotesNode>::iterator listofNotesitr = notemapitr->second.begin(); listofNotesitr != notemapitr->second.end(); listofNotesitr++) {
-					if (!isHold(listofNotesitr->noteType)) {
-						//Future note values
-						futStartAngle = -((float)listofNotesitr->position * 6);
-						futArcLength = -((float)listofNotesitr->size * 6);
-						CircleNotePen->Color = returnColor(listofNotesitr->noteType);
-						//modify rectangle to scale with how long until the note appears
-						float NoteScale = 1 - ((timeAtITR - currentTime) * (1 / totalTimeShowNotes)); //0-1 = 0-100%
-						sizeOfRectFut = sizeOfRect * NoteScale;
-						circleRadiusFut = (sizeOfRectFut / 2);
-						xPosFut = InitialSettingsPane->Left + (circleRadius - circleRadiusFut) + 1;
-						yPosFut = InitialSettingsPane->Bottom + 6 + (circleRadius - circleRadiusFut) + 1;
-						CircleNotePen->Width = widthOfNotePen * NoteScale;
-
-						System::Drawing::Point locationFut(xPosFut, yPosFut);
-						System::Drawing::Size sizeFut(sizeOfRectFut, sizeOfRectFut);
-						System::Drawing::Rectangle RectFut(locationFut, sizeFut);
-						if (RectFut.Width >= 1) {
-							notesGraphics->DrawArc(CircleNotePen, RectFut, futStartAngle, futArcLength);
-						}
-					}
-				}
-			}
-			else {
-				notemapitr = mapOfNotes.end();
-				notemapitr--;
-			}
-		}
-
-
-		//Draw selected note
-		if (SelectedLineType == 1 && Rect.Width >= 1) {
-			CircleNotePen->Color = returnColor(SelectedNoteTypeVisual);
-			CircleNotePen->Width = 4;
-			notesGraphics->DrawArc(CircleNotePen, Rect, startAngle, arcLength);
-		}
-		*/
 	}
 	private: System::Void PosNum_ValueChanged(System::Object^ sender, System::EventArgs^ e) {
 		RefreshPaint();
@@ -3719,18 +3530,17 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 		SolidBrush^ MaskBrush = gcnew SolidBrush(Color::DimGray);
 		SolidBrush^ MaskRemoveBrush = gcnew SolidBrush(Color::White);
 		//Circle location and size
-		float xPos = widthOfNotePen*2;
-		float yPos = widthOfNotePen*2;
+		PointF circlePos(widthOfNotePen * 2, widthOfNotePen * 2);
 		float sizeOfRect = CirclePanel->Width - (widthOfNotePen*4);
 		//Circle info
 		float circleRadius = ((float)sizeOfRect / 2);
-		float xCenterOfCircle = circleRadius + xPos;
-		float yCenterOfCircle = circleRadius + yPos;
+		float xCenterOfCircle = circleRadius + circlePos.X;
+		float yCenterOfCircle = circleRadius + circlePos.Y;
 		//Selected object values
 		float startAngle = -((float)PosNum->Value * 6);
 		float arcLength = -((float)SizeNum->Value * 6);
 		//Rectangle the visualization is in
-		System::Drawing::Point location(xPos, yPos);
+		System::Drawing::Point location(circlePos.X, circlePos.Y);
 		System::Drawing::Size size(sizeOfRect, sizeOfRect);
 		System::Drawing::Rectangle Rect(location, size);
 		//Drawing mode
@@ -3745,13 +3555,6 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 		}
 		//How many measures/beats in the future to show notes
 		float totalTimeShowNotes = (float)VisualHispeed->Value;
-		//future stuff
-		float futStartAngle;
-		float futArcLength;
-		float xPosFut;
-		float yPosFut;
-		float sizeOfRectFut;
-		float circleRadiusFut;
 		//pre-existing mask values
 		float maskStartAngle;
 		float maskArcLength;
@@ -3813,19 +3616,9 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 		//Draw measure circle
 		float nearestMeasure = std::ceil(currentTime);
 		for (float nearestMeasure = std::ceil(currentTime); (nearestMeasure - currentTime) < totalTimeShowNotes; nearestMeasure += 1.0) {
-			//modify rectangle to scale with how long until the measure appears
-			float NoteScaleInitial = 1 - ((nearestMeasure - currentTime) * (1 / totalTimeShowNotes)); //0-1 = 0-100%
-			float NoteScale = (std::pow(10.f, NoteScaleInitial)) / 10.f;
-			sizeOfRectFut = sizeOfRect * NoteScale;
-			circleRadiusFut = (sizeOfRectFut / 2);
-			xPosFut = xPos + (circleRadius - circleRadiusFut);
-			yPosFut = yPos + (circleRadius - circleRadiusFut);
-
-			System::Drawing::Point locationFut(xPosFut, yPosFut);
-			System::Drawing::Size sizeFut(sizeOfRectFut, sizeOfRectFut);
-			System::Drawing::Rectangle RectFut(locationFut, sizeFut);
-			if (RectFut.Width >= 1) {
-				bufferedGfx->Graphics->DrawEllipse(CircleBeatPen, RectFut);
+			ArcInfo returnInfo = getScaledRectangle(circlePos, sizeOfRect, nearestMeasure, currentTime, totalTimeShowNotes);
+			if (returnInfo.rect.Width >= 1) {
+				bufferedGfx->Graphics->DrawEllipse(CircleBeatPen, returnInfo.rect);
 			}
 		}
 
@@ -3864,43 +3657,27 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 			if (timeAtITR <= (currentTime + totalTimeShowNotes)) {
 				for (std::list<NotesNode>::iterator listofNotesitr = notemapitr->second.begin(); listofNotesitr != notemapitr->second.end(); listofNotesitr++) {
 					if (isHold(listofNotesitr->noteType)) {
-						//Future hold values
-						futStartAngle = -((float)listofNotesitr->position * 6);
-						futArcLength = -((float)listofNotesitr->size * 6);
-						if (futArcLength != -360) { //increase size for highlight slightly decrease size to better match ingame
-							futStartAngle -= 2;
-							futArcLength += 4;
-						}
+						ArcInfo noteInfo = getArcInfo(listofNotesitr, circlePos, sizeOfRect, timeAtITR, currentTime, totalTimeShowNotes);
 						CircleNotePen->Color = returnColor(listofNotesitr->noteType);
-						//modify rectangle to scale with how long until the note appears
-						float NoteScaleInitial = 1 - ((timeAtITR - currentTime) * (1 / totalTimeShowNotes)); //0-1 = 0-100%
-						float NoteScale = (std::pow(10.f, NoteScaleInitial)) / 10.f;
-						sizeOfRectFut = sizeOfRect * NoteScale;
-						circleRadiusFut = (sizeOfRectFut / 2);
-						xPosFut = xPos + (circleRadius - circleRadiusFut);
-						yPosFut = yPos + (circleRadius - circleRadiusFut);
-						CircleNotePen->Width = widthOfNotePen * NoteScale + 2;
+						CircleNotePen->Width = widthOfNotePen * noteInfo.noteScale + 2;
 
-						System::Drawing::Point locationFut(xPosFut, yPosFut);
-						System::Drawing::Size sizeFut(sizeOfRectFut, sizeOfRectFut);
-						System::Drawing::Rectangle RectFut(locationFut, sizeFut);
-						if (RectFut.Width >= 1) {
-							bufferedGfx->Graphics->DrawArc(CircleNotePen, RectFut, futStartAngle, futArcLength); //Draw hold
+						if (noteInfo.rect.Width >= 1) {
+							bufferedGfx->Graphics->DrawArc(CircleNotePen, noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength); //Draw hold
 
 							if (listofNotesitr->noteType == 25) { //If bonus hold
 								CircleNotePen->Color = BonusColor;
 								CircleNotePen->Width += highlightWidth;
-								futStartAngle += 2; //increase size for highlight
-								futArcLength -= 4;
-								bufferedGfx->Graphics->DrawArc(CircleNotePen, RectFut, futStartAngle, futArcLength); //Draw highlight
+								noteInfo.startAngle += 2; //increase size for highlight
+								noteInfo.arcLength -= 4;
+								bufferedGfx->Graphics->DrawArc(CircleNotePen, noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength); //Draw highlight
 							}
 							if (highlightViewedNoteToolStripMenuItem->Checked) {
 								if (islistITREqualToViewITR(listofNotesitr)) {
 									CircleNotePen->Color = HighlightColor;
 									CircleNotePen->Width += highlightWidth;
-									futStartAngle += 2; //increase size for highlight
-									futArcLength -= 4;
-									bufferedGfx->Graphics->DrawArc(CircleNotePen, RectFut, futStartAngle, futArcLength); //Draw highlight
+									noteInfo.startAngle += 2; //increase size for highlight
+									noteInfo.arcLength -= 4;
+									bufferedGfx->Graphics->DrawArc(CircleNotePen, noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength); //Draw highlight
 								}
 							}
 						}
@@ -3919,43 +3696,27 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 			if (timeAtITR <= (currentTime + totalTimeShowNotes)) {
 				for (std::list<NotesNode>::iterator listofNotesitr = notemapitr->second.begin(); listofNotesitr != notemapitr->second.end(); listofNotesitr++) {
 					if (!isHold(listofNotesitr->noteType) && listofNotesitr->noteType != 12 && listofNotesitr->noteType != 13) {
-						//Future note values
-						futStartAngle = -((float)listofNotesitr->position * 6);
-						futArcLength = -((float)listofNotesitr->size * 6);
-						if (futArcLength != -360) { //increase size for highlight slightly decrease size to better match ingame
-							futStartAngle -= 2;
-							futArcLength += 4;
-						}
+						ArcInfo noteInfo = getArcInfo(listofNotesitr, circlePos, sizeOfRect, timeAtITR, currentTime, totalTimeShowNotes);
 						CircleNotePen->Color = returnColor(listofNotesitr->noteType);
-						//modify rectangle to scale with how long until the note appears
-						float NoteScaleInitial = 1 - ((timeAtITR - currentTime) * (1 / totalTimeShowNotes)); //0-1 = 0-100%
-						float NoteScale = (std::pow(10.f, NoteScaleInitial)) / 10.f;
-						sizeOfRectFut = sizeOfRect * NoteScale;
-						circleRadiusFut = (sizeOfRectFut / 2);
-						xPosFut = xPos + (circleRadius - circleRadiusFut);
-						yPosFut = yPos + (circleRadius - circleRadiusFut);
-						CircleNotePen->Width = widthOfNotePen * NoteScale;
+						CircleNotePen->Width = widthOfNotePen * noteInfo.noteScale;
 
-						System::Drawing::Point locationFut(xPosFut, yPosFut);
-						System::Drawing::Size sizeFut(sizeOfRectFut, sizeOfRectFut);
-						System::Drawing::Rectangle RectFut(locationFut, sizeFut);
-						if (RectFut.Width >= 1) {
-							bufferedGfx->Graphics->DrawArc(CircleNotePen, RectFut, futStartAngle, futArcLength); //Draw note
+						if (noteInfo.rect.Width >= 1) {
+							bufferedGfx->Graphics->DrawArc(CircleNotePen, noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength); //Draw note
 
 							if (listofNotesitr->noteType >= 20) { //If bonus note
 								CircleNotePen->Color = BonusColor;
 								CircleNotePen->Width += highlightWidth;
-								futStartAngle += 2; //increase size for highlight
-								futArcLength -= 4;
-								bufferedGfx->Graphics->DrawArc(CircleNotePen, RectFut, futStartAngle, futArcLength); //Draw highlight
+								noteInfo.startAngle += 2; //increase size for highlight
+								noteInfo.arcLength -= 4;
+								bufferedGfx->Graphics->DrawArc(CircleNotePen, noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength); //Draw highlight
 							}
 							if (highlightViewedNoteToolStripMenuItem->Checked) {
 								if (islistITREqualToViewITR(listofNotesitr)) {
 									CircleNotePen->Color = HighlightColor;
 									CircleNotePen->Width += highlightWidth;
-									futStartAngle += 2; //increase size for highlight
-									futArcLength -= 4;
-									bufferedGfx->Graphics->DrawArc(CircleNotePen, RectFut, futStartAngle, futArcLength); //Draw highlight
+									noteInfo.startAngle += 2; //increase size for highlight
+									noteInfo.arcLength -= 4;
+									bufferedGfx->Graphics->DrawArc(CircleNotePen, noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength); //Draw highlight
 								}
 							}
 						}
@@ -3989,6 +3750,34 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 
 		//Render
 		bufferedGfx->Render(e->Graphics);
+	}
+	ArcInfo getArcInfo(std::list<NotesNode>::iterator itr, System::Drawing::PointF circlePos, float sizeOfRect, float timeAtITR, float currentTime, float totalTimeShowNotes) {
+		ArcInfo returnInfo = getScaledRectangle(circlePos, sizeOfRect, timeAtITR, currentTime, totalTimeShowNotes);
+		//Future note values
+		returnInfo.startAngle = -((float)itr->position * 6);
+		returnInfo.arcLength = -((float)itr->size * 6);
+		if (returnInfo.arcLength != -360) { //increase size for highlight slightly decrease size to better match ingame
+			returnInfo.startAngle -= 2;
+			returnInfo.arcLength += 4;
+		}
+
+		return returnInfo;
+	}
+	ArcInfo getScaledRectangle(System::Drawing::PointF circlePos, float sizeOfRect, float objTime, float currentTime, float totalTimeShowNotes) {
+		ArcInfo returnInfo;
+		//modify rectangle to scale with how long until the note appears
+		float NoteScaleInitial = 1 - ((objTime - currentTime) * (1 / totalTimeShowNotes)); //0-1 = 0-100%
+		returnInfo.noteScale = (std::pow(10.f, NoteScaleInitial)) / 10.f;
+		float sizeOfRectFut = sizeOfRect * returnInfo.noteScale;
+		float circleRadiusFut = (sizeOfRectFut / 2);
+
+		System::Drawing::Point locationFut(
+			circlePos.X + ((sizeOfRect / 2) - circleRadiusFut),
+			circlePos.Y + ((sizeOfRect / 2) - circleRadiusFut));
+		System::Drawing::Size sizeFut(sizeOfRectFut, sizeOfRectFut);
+		returnInfo.rect = Rectangle(locationFut, sizeFut);
+
+		return returnInfo;
 	}
 	bool islistITREqualToViewITR(std::list<NotesNode>::iterator listITR) {
 		if (listITR->beat != viewNotesITR->beat)
