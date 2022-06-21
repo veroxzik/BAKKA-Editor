@@ -36,8 +36,8 @@ struct NotesNode {
 	int size;
 	int holdChange;
 	int BGType;
-	std::list<NotesNode>::iterator nextNode;
-	std::list<NotesNode>::iterator prevNode;
+	NotesNode* nextNode;
+	NotesNode* prevNode;
 };
 
 enum GimmickType {

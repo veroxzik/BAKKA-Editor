@@ -13,6 +13,7 @@
 #include <chrono>
 #include "Chart.h"
 #define PI 3.14159265
+#define degToRad(x) ((float)x * PI / 180.0f)
 
 using std::to_string;
 using namespace IrrKlang;
@@ -26,7 +27,7 @@ NoteType SelectedNoteType = TouchNoBonus;
 NoteType SelectedNoteTypeVisual = TouchNoBonus;
 std::list<NotesNode>::iterator viewNotesITR = theChart.Notes.begin();
 std::list<PreChartNode>::iterator viewGimmicksITR = theChart.PreChart.begin();
-std::list<NotesNode>::iterator holdNoteitr = theChart.Notes.end();
+NotesNode* lastHoldPtr;
 std::map<float, std::list<std::pair<int, int>>> mapOfMasks; //measure, list of masks
 std::map<float, std::list<NotesNode>> mapOfNotes; //measure, list of notes
 std::map<float, float> mapOfTimeBetweenMeasures; //current beat, milliseconds beatween beats
@@ -66,6 +67,24 @@ int findLine(std::list<NotesNode>::iterator nextNode) {
 
 	return outputLine;
 }
+int findLine(NotesNode* nextNode) {
+	int outputLine = 0;
+	for (std::list<NotesNode>::iterator itr = theChart.Notes.begin(); itr != theChart.Notes.end(); itr++) {
+		if (&(*itr) == nextNode)
+			break;
+		outputLine++;
+	}
+
+	return outputLine;
+}
+std::list<NotesNode>::iterator getItrFromPointer(std::list<NotesNode> list, NotesNode* ptr) {
+	for (std::list<NotesNode>::iterator itr = list.begin(); itr != list.end(); itr++) {
+		NotesNode* tempPtr = &(*itr);
+		if (tempPtr == ptr)
+			return itr;
+	}
+	return list.end();
+}
 bool isHold(NoteType note) {
 	switch (note)
 	{
@@ -101,6 +120,18 @@ float findGCD(float a, float b) {
 	if (b == 0)
 		return a;
 	return findGCD(b, (int)a % (int)b);
+}
+
+float getTime(std::list<NotesNode>::iterator noteITR) {
+	return (float)noteITR->beat + ((float)noteITR->subBeat / 1920.f);
+}
+
+float getTime(NotesNode* node) {
+	return (float)node->beat + ((float)node->subBeat / 1920.f);
+}
+
+float getTime(std::list<PreChartNode>::iterator noteITR) {
+	return (float)noteITR->beat + ((float)noteITR->subBeat / 1920.f);
 }
 
 namespace BAKKAEditor {
@@ -1789,7 +1820,7 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 
 		for (std::list<NotesNode>::iterator viewMasksITR = theChart.Notes.begin(); viewMasksITR != theChart.Notes.end(); viewMasksITR++) {
 			if (viewMasksITR->noteType == MaskAdd || viewMasksITR->noteType == MaskRemove) {
-				float currentTime = (float)viewMasksITR->beat + ((float)viewMasksITR->subBeat / 1920.f);
+				float currentTime = getTime(viewMasksITR);
 				int maskStart, maskEnd;
 				maskStart = viewMasksITR->position;
 				maskEnd = viewMasksITR->position + viewMasksITR->size;
@@ -1911,7 +1942,7 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 	void refreshMapofNotes() {
 		mapOfNotes.clear();
 		for (std::list<NotesNode>::iterator NotesITR = theChart.Notes.begin(); NotesITR != theChart.Notes.end(); NotesITR++) {
-			float currentTime = (float)NotesITR->beat + ((float)NotesITR->subBeat / 1920.f);
+			float currentTime = getTime(NotesITR);
 			if (NotesITR->noteType != 12 || NotesITR->noteType != 13) {
 				NotesNode tempnode;
 				tempnode.beat = NotesITR->beat;
@@ -1941,7 +1972,7 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 
 		if (!theChart.PreChart.empty()) {
 			for (std::list<PreChartNode>::iterator viewGimmicksITR = theChart.PreChart.begin(); viewGimmicksITR != theChart.PreChart.end(); viewGimmicksITR++) {
-				float currentTime = (float)viewGimmicksITR->beat + ((float)viewGimmicksITR->subBeat / 1920.f);
+				float currentTime = getTime(viewGimmicksITR);
 				if (viewGimmicksITR->type == BpmChange || viewGimmicksITR->type == TimeSignatureChange) { // First run through fills maps of BPMs and Time Signatures
 					//make current time values in maps current to what the PreChart list is saying
 					if(viewGimmicksITR->type == BpmChange)
@@ -2587,10 +2618,13 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 			lineTemp = 0;
 			for (noteitr = theChart.Notes.begin(); noteitr != theChart.Notes.end(); ++noteitr) {
 				if (lineTemp == mapitr->first) {
+					if (noteitr->noteType == HoldStartNoBonus || noteitr->noteType == HoldStartBonusFlair) {
+						(noteitr)->prevNode = nullptr;
+					}
 					std::list<NotesNode>::iterator tempitr = noteitr;
 					std::advance(tempitr, (mapitr->second - lineTemp));
-					(noteitr)->nextNode = tempitr;
-					(tempitr)->prevNode = noteitr;
+					(noteitr)->nextNode = &(*tempitr);
+					(tempitr)->prevNode = &(*noteitr);
 					noteitr = theChart.Notes.end();
 					noteitr--;
 				}
@@ -2691,23 +2725,34 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 				switch (viewNotesITR->noteType) {
 				case HoldStartNoBonus:
 				case HoldStartBonusFlair:
-					viewNotesITR->prevNode = theChart.Notes.end();
-					viewNotesITR->nextNode = theChart.Notes.end();
-					holdNoteitr = viewNotesITR;
+					theChart.Notes.back().prevNode = nullptr;
+					theChart.Notes.back().nextNode = nullptr;
+					lastHoldPtr = &theChart.Notes.back();
+					//viewNotesITR->prevNode = theChart.Notes.end();
+					//viewNotesITR->nextNode = theChart.Notes.end();
+					//holdNoteitr = viewNotesITR;
 					refreshMapofNotes();
 					break;
 				case HoldMiddle:
-					viewNotesITR->prevNode = holdNoteitr;
-					viewNotesITR->prevNode->nextNode = viewNotesITR;
-					viewNotesITR->nextNode = theChart.Notes.end();
-					holdNoteitr = viewNotesITR;
+					theChart.Notes.back().prevNode = lastHoldPtr;
+					theChart.Notes.back().prevNode->nextNode = &theChart.Notes.back();
+					theChart.Notes.back().nextNode = nullptr;
+					lastHoldPtr = &theChart.Notes.back();
+					//viewNotesITR->prevNode = holdNoteitr;
+					//viewNotesITR->prevNode->nextNode = viewNotesITR;
+					//viewNotesITR->nextNode = theChart.Notes.end();
+					//holdNoteitr = viewNotesITR;
 					refreshMapofNotes();
 					break;
 				case HoldEnd:
-					viewNotesITR->prevNode = holdNoteitr;
-					viewNotesITR->prevNode->nextNode = viewNotesITR;
-					viewNotesITR->nextNode = theChart.Notes.end();
-					holdNoteitr = theChart.Notes.end();
+					theChart.Notes.back().prevNode = lastHoldPtr;
+					theChart.Notes.back().prevNode->nextNode = &theChart.Notes.back();
+					theChart.Notes.back().nextNode = nullptr;
+					lastHoldPtr = nullptr;
+					//viewNotesITR->prevNode = holdNoteitr;
+					//viewNotesITR->prevNode->nextNode = viewNotesITR;
+					//viewNotesITR->nextNode = theChart.Notes.end();
+					//holdNoteitr = theChart.Notes.end();
 					refreshMapofNotes();
 					break;
 				}
@@ -3235,11 +3280,12 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 							holdDelete = false;
 						}
 						else {
-							if (viewNotesITRtemp->nextNode != theChart.Notes.end()) {
-								viewNotesITR = viewNotesITRtemp->nextNode;
+							if (viewNotesITRtemp->nextNode != nullptr) {
+
+								viewNotesITR = getItrFromPointer(theChart.Notes, viewNotesITRtemp->nextNode);
 								theChart.Notes.erase(viewNotesITRtemp);
 								viewNotesITRtemp = viewNotesITR;
-								viewNotesITRtemp->prevNode = theChart.Notes.end();
+								viewNotesITRtemp->prevNode = nullptr;
 							}
 							else {
 								if (viewNotesITR == theChart.Notes.begin()) {
@@ -3259,14 +3305,9 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 					}
 					holdDelete = false;
 				}
-				else if (viewNotesITRtemp->noteType == HoldMiddle) {
+				else if ((viewNotesITRtemp->noteType == HoldMiddle) || (viewNotesITRtemp->noteType == HoldEnd)) {
 					holdDelete = true;
-					viewNotesITRtemp = viewNotesITRtemp->prevNode;
-					viewNotesITR = viewNotesITRtemp;
-				}
-				else if (viewNotesITRtemp->noteType == HoldEnd) {
-					holdDelete = true;
-					viewNotesITRtemp = viewNotesITRtemp->prevNode;
+					viewNotesITRtemp = getItrFromPointer(theChart.Notes, viewNotesITRtemp->prevNode);
 					viewNotesITR = viewNotesITRtemp;
 				}
 				else {
@@ -3529,13 +3570,13 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 		Pen^ CircleBeatPen = gcnew Pen(Color::White, widthOfMeasurePen);
 		SolidBrush^ MaskBrush = gcnew SolidBrush(Color::DimGray);
 		SolidBrush^ MaskRemoveBrush = gcnew SolidBrush(Color::White);
+		SolidBrush^ HoldBodyBrush = gcnew SolidBrush(Color::FromArgb(170, Color::Yellow));
 		//Circle location and size
 		PointF circlePos(widthOfNotePen * 2, widthOfNotePen * 2);
 		float sizeOfRect = CirclePanel->Width - (widthOfNotePen*4);
 		//Circle info
 		float circleRadius = ((float)sizeOfRect / 2);
-		float xCenterOfCircle = circleRadius + circlePos.X;
-		float yCenterOfCircle = circleRadius + circlePos.Y;
+		PointF circleCenter(circleRadius + circlePos.X, circleRadius + circlePos.Y);
 		//Selected object values
 		float startAngle = -((float)PosNum->Value * 6);
 		float arcLength = -((float)SizeNum->Value * 6);
@@ -3629,9 +3670,8 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 		//Draw Degree Lines
 		for (int i = 0; i < 360; i += 6) { //i is the angle n degrees
 			float xStart, yStart, xEnd, yEnd;
-			float degToRad = (float)i * PI / 180.0; //i to Radians
-			xStart = (circleRadius * cos(degToRad)) + xCenterOfCircle;
-			yStart = (circleRadius * sin(degToRad)) + yCenterOfCircle;
+			xStart = (circleRadius * cos(degToRad(i))) + circleCenter.X;
+			yStart = (circleRadius * sin(degToRad(i))) + circleCenter.Y;
 			PointF coordPointStart(xStart, yStart);
 
 			float innerRadius = circleRadius - baseLineLength;
@@ -3644,12 +3684,14 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 				innerRadius = circleRadius - (baseLineLength * 2.5);
 				CircleLinesPen->Width = (baseLineWidth * 2);
 			}
-			xEnd = (innerRadius * cos(degToRad)) + xCenterOfCircle;
-			yEnd = (innerRadius * sin(degToRad)) + yCenterOfCircle;
+			xEnd = (innerRadius * cos(degToRad(i))) + circleCenter.X;
+			yEnd = (innerRadius * sin(degToRad(i))) + circleCenter.Y;
 			PointF coordPointEnd(xEnd, yEnd);
 
 			bufferedGfx->Graphics->DrawLine(CircleLinesPen, coordPointStart, coordPointEnd);
 		}
+
+		ArcInfo endInfo = getScaledRectangle(circlePos, sizeOfRect, currentTime + totalTimeShowNotes, currentTime, totalTimeShowNotes);
 
 		//Draw future holds
 		for (std::map<float, std::list<NotesNode>>::iterator notemapitr = mapOfNotes.lower_bound(currentTime); notemapitr != mapOfNotes.end(); notemapitr++) {
@@ -3658,8 +3700,64 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 				for (std::list<NotesNode>::iterator listofNotesitr = notemapitr->second.begin(); listofNotesitr != notemapitr->second.end(); listofNotesitr++) {
 					if (isHold(listofNotesitr->noteType)) {
 						ArcInfo noteInfo = getArcInfo(listofNotesitr, circlePos, sizeOfRect, timeAtITR, currentTime, totalTimeShowNotes);
+						float noteTime = getTime(listofNotesitr);
 						CircleNotePen->Color = returnColor(listofNotesitr->noteType);
 						CircleNotePen->Width = widthOfNotePen * noteInfo.noteScale + 2;
+
+						// Special condition if this is the first note and there's a previous note off-screen
+						if (listofNotesitr == notemapitr->second.begin() && listofNotesitr->prevNode != nullptr) {
+							float prevTime = getTime(listofNotesitr->prevNode);
+							if (prevTime < currentTime) {
+								ArcInfo prevNote = getArcInfo(listofNotesitr->prevNode, circlePos, sizeOfRect, prevTime, currentTime, totalTimeShowNotes);
+								ArcInfo currentInfo = getScaledRectangle(circlePos, sizeOfRect, currentTime, currentTime, totalTimeShowNotes);
+								float ratio2 = (currentInfo.rect.Width - noteInfo.rect.Width) / (prevNote.rect.Width - noteInfo.rect.Width);
+								float startAngle = ratio2 * (noteInfo.startAngle - prevNote.startAngle) + noteInfo.startAngle;
+								float endAngle = ratio2 * ((noteInfo.startAngle - (noteInfo.arcLength)) - (prevNote.startAngle - (prevNote.arcLength))) + (noteInfo.startAngle - (noteInfo.arcLength));
+								float arcLength = startAngle - endAngle;
+
+								Drawing2D::GraphicsPath^ path = gcnew Drawing2D::GraphicsPath();
+								path->AddArc(noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength);
+								path->AddArc(currentInfo.rect, startAngle + arcLength, -arcLength);
+								bufferedGfx->Graphics->FillPath(HoldBodyBrush, path);
+							}
+						}
+
+						// Plot hold bg if required
+						if (listofNotesitr->nextNode != nullptr) {
+						// if (listofNotesitr->nextNode != notemapitr->second.end()) {
+							float nextTime = getTime(listofNotesitr->nextNode);
+							ArcInfo nextNote = getArcInfo(listofNotesitr->nextNode, circlePos, sizeOfRect, nextTime, currentTime, totalTimeShowNotes);
+							if (nextTime <= (currentTime + totalTimeShowNotes)) {
+								// Next note is on-screen
+								Drawing2D::GraphicsPath^ path = gcnew Drawing2D::GraphicsPath();
+								path->AddArc(noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength);
+								path->AddArc(nextNote.rect, nextNote.startAngle + nextNote.arcLength, -nextNote.arcLength);
+								bufferedGfx->Graphics->FillPath(HoldBodyBrush, path);
+							}
+							else {
+								// This code should work if nextNode is valid
+								
+								//// Next note is off-screen
+								//float ratio = (float)(endInfo.rect.Width - nextNote.rect.Width) / (float)(noteInfo.rect.Width - nextNote.rect.Width);
+								//float startNoteAngle = nextNote.startAngle;
+								//float endNoteAngle = noteInfo.startAngle;
+								//if (nextNote.startAngle > noteInfo.startAngle && (Math::Abs(nextNote.startAngle - noteInfo.startAngle) > 180)) {
+								//	startNoteAngle -= 360;
+								//}
+								//else if (noteInfo.startAngle > nextNote.startAngle && (Math::Abs(nextNote.startAngle - noteInfo.startAngle) > 180)) {
+								//	endNoteAngle -= 360;
+								//}
+								//float startAngle = ratio * (endNoteAngle - startNoteAngle) + startNoteAngle;
+								//float endAngle = ratio * ((endNoteAngle - noteInfo.arcLength) - (startNoteAngle - nextNote.arcLength)) +
+								//	(startNoteAngle - nextNote.arcLength);
+								//float arcLength = startAngle - endAngle;
+
+								//Drawing2D::GraphicsPath^ path = gcnew Drawing2D::GraphicsPath();
+								//path->AddArc(endInfo.rect, startAngle, arcLength);
+								//path->AddArc(noteInfo.rect, noteInfo.startAngle + noteInfo.arcLength, -noteInfo.arcLength);
+								//bufferedGfx->Graphics->FillPath(HoldBodyBrush, path);
+							}
+						}
 
 						if (noteInfo.rect.Width >= 1) {
 							bufferedGfx->Graphics->DrawArc(CircleNotePen, noteInfo.rect, noteInfo.startAngle, noteInfo.arcLength); //Draw hold
@@ -3752,10 +3850,13 @@ private: System::Windows::Forms::ToolStripMenuItem^ highlightViewedNoteToolStrip
 		bufferedGfx->Render(e->Graphics);
 	}
 	ArcInfo getArcInfo(std::list<NotesNode>::iterator itr, System::Drawing::PointF circlePos, float sizeOfRect, float timeAtITR, float currentTime, float totalTimeShowNotes) {
+		return getArcInfo(&(*itr), circlePos, sizeOfRect, timeAtITR, currentTime, totalTimeShowNotes);
+	}
+	ArcInfo getArcInfo(NotesNode* ptr, System::Drawing::PointF circlePos, float sizeOfRect, float timeAtITR, float currentTime, float totalTimeShowNotes) {
 		ArcInfo returnInfo = getScaledRectangle(circlePos, sizeOfRect, timeAtITR, currentTime, totalTimeShowNotes);
 		//Future note values
-		returnInfo.startAngle = -((float)itr->position * 6);
-		returnInfo.arcLength = -((float)itr->size * 6);
+		returnInfo.startAngle = -((float)ptr->position * 6);
+		returnInfo.arcLength = -((float)ptr->size * 6);
 		if (returnInfo.arcLength != -360) { //increase size for highlight slightly decrease size to better match ingame
 			returnInfo.startAngle -= 2;
 			returnInfo.arcLength += 4;
